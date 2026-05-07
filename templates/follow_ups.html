@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ lead.name }} - 跟进记录</h2>
+<a href="/leads" class="btn btn-secondary btn-sm mb-3">← 返回客户列表</a>
+
+<form method="post" action="/lead/{{ lead.id }}/followup/add" class="mb-4">
+    <div class="input-group">
+        <textarea name="content" class="form-control" rows="2" placeholder="输入跟进内容..." required></textarea>
+        <button class="btn btn-primary" type="submit">添加跟进</button>
+    </div>
+</form>
+
+{% if follow_ups %}
+    <ul class="list-group">
+        {% for fu in follow_ups %}
+        <li class="list-group-item">
+            <small class="text-muted">{{ fu.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+            <p class="mb-0">{{ fu.content }}</p>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <div class="text-muted">暂无跟进记录</div>
+{% endif %}
+{% endblock %}

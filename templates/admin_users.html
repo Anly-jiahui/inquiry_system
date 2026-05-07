@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>用户管理 <a href="/admin/user/new" class="btn btn-primary btn-sm float-end">添加用户</a></h2>
+<table class="table table-striped">
+  <thead>
+    <tr><th>用户名</th><th>角色</th><th>组</th><th>操作</th></tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.role }}</td>
+      <td>{{ u.group_name or '-' }}</td>
+      <td>
+        <a href="/admin/user/{{ u.id }}/edit" class="btn btn-outline-warning btn-sm">编辑</a>
+        <form action="/admin/user/{{ u.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('确定删除？');">
+          <button class="btn btn-outline-danger btn-sm">删除</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

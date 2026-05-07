@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-4">登录</h2>
+<form method="post">
+    <div class="mb-3">
+        <label class="form-label">用户名</label>
+        <input type="text" name="username" class="form-control" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">密码</label>
+        <input type="password" name="password" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-primary">登录</button>
+</form>
+<div class="mt-3">
+    <small class="text-muted">
+        管理员：admin / 123456<br>
+        各组组长/销售：leader1~8 / 222，sales1a~8b / 111
+    </small>
+</div>
+{% endblock %}

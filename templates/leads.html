@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-3">客户列表
+    <a href="/lead/new" class="btn btn-primary btn-sm float-end ms-2"><i class="bi bi-plus-lg"></i> 新建客户</a>
+    <a href="/leads?export=1{% if request.args.get('name') %}&name={{ request.args.get('name') }}{% endif %}{% if request.args.get('sales_consultant') %}&sales_consultant={{ request.args.get('sales_consultant') }}{% endif %}{% if request.args.get('group') %}&group={{ request.args.get('group') }}{% endif %}{% if request.args.get('status') %}&status={{ request.args.get('status') }}{% endif %}{% if request.args.get('customer_category') %}&customer_category={{ request.args.get('customer_category') }}{% endif %}" class="btn btn-success btn-sm float-end ms-2"><i class="bi bi-download"></i> 导出CSV</a>
+</h2>
+
+<form class="row g-3 mb-4" method="get">
+    <div class="col-md-2">
+        <input type="text" name="name" class="form-control" placeholder="姓名" value="{{ request.args.get('name','') }}">
+    </div>
+    {% if current_user.role in ['admin','leader'] %}
+    <div class="col-md-2">
+        <input type="text" name="sales_consultant" class="form-control" placeholder="销售顾问" value="{{ request.args.get('sales_consultant','') }}">
+    </div>
+    {% endif %}
+    {% if current_user.role == 'admin' %}
+    <div class="col-md-2">
+        <input type="text" name="group" class="form-control" placeholder="组" value="{{ request.args.get('group','') }}">
+    </div>
+    {% endif %}
+    <div class="col-md-2">
+        <select name="status" class="form-select">
+            <option value="">全部状态</option>
+            <option value="新线索">新线索</option>
+            <option value="已联系">已联系</option>
+            <option value="已报价">已报价</option>
+            <option value="已成交">已成交</option>
+            <option value="已关闭">已关闭</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select name="customer_category" class="form-select">
+            <option value="">全部分类</option>
+            <option value="A类">A类</option>
+            <option value="B类">B类</option>
+            <option value="C类">C类</option>
+            <option value="D类">D类</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select name="expire_status" class="form-select">
+            <option value="">是否到期</option>
+            <option value="expired" {% if request.args.get('expire_status') == 'expired' %}selected{% endif %}>已到期</option>
+            <option value="not_expired" {% if request.args.get('expire_status') == 'not_expired' %}selected{% endif %}>未到期</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-outline-primary w-100">查询</button>
+    </div>
+</form>
+
+{% if expired_count is defined and expired_count > 0 %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle"></i>
+    <strong>到期提醒：</strong>您有 <b>{{ expired_count }}</b> 条客户已过期，请及时跟进！
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="mb-3">
+    <form action="/import_leads" method="post" enctype="multipart/form-data" onsubmit="return confirm('导入将自动归属到你的名下，继续吗？');">
+        <small class="text-muted">导入CSV（格式：组,销售顾问,分线日期,客户分类,姓名,电话,是否加微信,所属区域,基本信息,是否到厂,离厂原因,状态,来源,成交金额,备注）</small>
+        <div class="input-group">
+            <input type="file" name="file" class="form-control" accept=".csv" required>
+            <button type="submit" class="btn btn-warning"><i class="bi bi-upload"></i> 导入</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>组</th>
+                <th>销售顾问</th>
+                <th>客户姓名</th>
+                <th>客户电话</th>
+                <th>客户分类</th>
+                <th>状态</th>
+                <th>客户基本信息</th>
+                <th>最新跟进记录</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in lead_data %}
+            <tr data-lead-id="{{ item.lead.id }}">
+                <td>
+                    {% if current_user.role == 'admin' %}
+                    <select class="form-select form-select-sm quick-edit" data-field="group">
+                        {% for g in all_groups %}
+                        <option value="{{ g.name }}" {% if item.lead.group==g.name %}selected{% endif %}>{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    {{ item.lead.group or '-' }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if current_user.role in ['admin','leader'] %}
+                    <select class="form-select form-select-sm quick-edit" data-field="sales_consultant">
+                        <option value="">-</option>
+                        {% for u in all_consultants %}
+                        <option value="{{ u.username }}" {% if item.lead.sales_consultant==u.username %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    {{ item.lead.sales_consultant or '-' }}
+                    {% endif %}
+                </td>
+                <td>{{ item.lead.name }}</td>
+                <td>{{ item.lead.phone }}</td>
+                <td>{{ item.lead.customer_category or '-' }}</td>
+                <td>
+                    <select class="form-select form-select-sm quick-edit" data-field="status">
+                        <option value="新线索" {% if item.lead.status=='新线索' %}selected{% endif %}>新线索</option>
+                        <option value="已联系" {% if item.lead.status=='已联系' %}selected{% endif %}>已联系</option>
+                        <option value="已报价" {% if item.lead.status=='已报价' %}selected{% endif %}>已报价</option>
+                        <option value="已成交" {% if item.lead.status=='已成交' %}selected{% endif %}>已成交</option>
+                        <option value="已关闭" {% if item.lead.status=='已关闭' %}selected{% endif %}>已关闭</option>
+                    </select>
+                </td>
+                <td>
+                    <small>{{ item.lead.customer_info[:30] if item.lead.customer_info else '-' }}{% if item.lead.customer_info and item.lead.customer_info|length > 30 %}...{% endif %}</small>
+                </td>
+                <td>
+                    {% if item.latest_followup %}
+                    <small>{{ item.latest_followup.created_at.strftime('%m-%d') }} {{ item.latest_followup.content[:20] }}{% if item.latest_followup.content|length > 20 %}...{% endif %}</small>
+                    {% else %}
+                    <small class="text-muted">暂无</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/lead/{{ item.lead.id }}/followups" class="btn btn-outline-info btn-sm">跟进</a>
+                    <a href="/lead/{{ item.lead.id }}/edit" class="btn btn-outline-warning btn-sm">编辑</a>
+                    {% if current_user.role == 'admin' %}
+                    <form action="/lead/{{ item.lead.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('确定删除？');">
+                        <button class="btn btn-outline-danger btn-sm">删除</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selects = document.querySelectorAll('.quick-edit');
+    selects.forEach(function(select) {
+        select.addEventListener('change', function() {
+            const leadId = this.closest('tr').dataset.leadId;
+            const field = this.dataset.field;
+            const value = this.value;
+            fetch('/lead/' + leadId + '/quick_update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: field, value: value })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.classList.add('is-valid');
+                    setTimeout(() => this.classList.remove('is-valid'), 1000);
+                    if (field === 'sales_consultant') location.reload();
+                } else {
+                    alert('修改失败：' + (data.error || '未知错误'));
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('请求失败');
+                location.reload();
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

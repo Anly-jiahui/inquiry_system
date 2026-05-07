@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>组管理</h2>
+<form method="post" action="/admin/group/new" class="row g-3 mb-4">
+  <div class="col-auto">
+    <input type="text" name="name" class="form-control" placeholder="新组名" required>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">添加组</button>
+  </div>
+</form>
+<table class="table table-striped">
+  <thead><tr><th>组名</th><th>操作</th></tr></thead>
+  <tbody>
+    {% for g in groups %}
+    <tr>
+      <td>{{ g.name }}</td>
+      <td>
+        <form action="/admin/group/{{ g.id }}/delete" method="post" onsubmit="return confirm('删除会影响关联用户，确定吗？');">
+          <button class="btn btn-outline-danger btn-sm">删除</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-bar-chart-fill"></i> 数据看板</h2>
+
+<div class="row text-center mb-4">
+    <div class="col-6 col-md-3 mb-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title">{{ total_leads }}</h5>
+                <p class="card-text">线索总数</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3 mb-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title">{{ total_orders }}</h5>
+                <p class="card-text">订单总数</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3 mb-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <h5 class="card-title">{{ "%.2f"|format(total_amount) }}</h5>
+                <p class="card-text">订单总额 (元)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3 mb-3">
+        <div class="card bg-secondary text-white">
+            <div class="card-body">
+                <h5 class="card-title">{{ total_leads - total_orders if total_leads > total_orders else 0 }}</h5>
+                <p class="card-text">无订单线索</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">线索状态分布</div>
+            <div class="card-body">
+                <div id="leadStatusChart" style="height:300px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">订单状态分布</div>
+            <div class="card-body">
+                <div id="orderStatusChart" style="height:300px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+    var leadChart = echarts.init(document.getElementById('leadStatusChart'));
+    leadChart.setOption({
+        tooltip: { trigger: 'item' },
+        legend: { orient: 'vertical', left: 'left' },
+        series: [{
+            name: '线索状态',
+            type: 'pie',
+            radius: '70%',
+            data: [
+                {% for i in range(status_labels|length) %}
+                { value: {{ status_counts[i] }}, name: '{{ status_labels[i] }}' }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+        }]
+    });
+
+    var orderChart = echarts.init(document.getElementById('orderStatusChart'));
+    orderChart.setOption({
+        tooltip: { trigger: 'item' },
+        legend: { orient: 'vertical', left: 'left' },
+        series: [{
+            name: '订单状态',
+            type: 'pie',
+            radius: '70%',
+            data: [
+                {% for i in range(order_status_labels|length) %}
+                { value: {{ order_status_counts[i] }}, name: '{{ order_status_labels[i] }}' }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+        }]
+    });
+
+    window.addEventListener('resize', function() {
+        leadChart.resize();
+        orderChart.resize();
+    });
+</script>
+{% endblock %}

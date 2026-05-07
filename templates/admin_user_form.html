@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{% if user %}编辑用户{% else %}添加用户{% endif %}</h2>
+<form method="post">
+  <div class="mb-3">
+    <label class="form-label">用户名</label>
+    <input type="text" name="username" class="form-control" value="{{ user.username if user else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">密码 {% if user %}(留空则不修改){% endif %}</label>
+    <input type="password" name="password" class="form-control" {% if not user %}required{% endif %}>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">角色</label>
+    <select name="role" class="form-select" required>
+      <option value="">请选择</option>
+      <option value="consultant" {% if user and user.role=='consultant' %}selected{% endif %}>销售顾问</option>
+      <option value="leader" {% if user and user.role=='leader' %}selected{% endif %}>组长</option>
+      <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>管理员</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">所属组</label>
+    <select name="group_name" class="form-select">
+      <option value="">无</option>
+      {% for g in groups %}
+      <option value="{{ g.name }}" {% if user and user.group_name==g.name %}selected{% endif %}>{{ g.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">保存</button>
+  <a href="/admin/users" class="btn btn-secondary">取消</a>
+</form>
+{% endblock %}

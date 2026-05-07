@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{% if lead %}编辑客户{% else %}新建客户{% endif %}</h2>
+<form method="post">
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">销售顾问</label>
+      {% if current_user.role == 'consultant' %}
+        <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+        <input type="hidden" name="sales_consultant" value="{{ current_user.username }}">
+      {% else %}
+        <select name="sales_consultant" id="sales_consultant" class="form-select" required>
+          <option value="">请选择</option>
+          {% for u in consultants %}
+          <option value="{{ u.username }}" data-group="{{ u.group_name }}" {% if lead and lead.sales_consultant==u.username %}selected{% endif %}>{{ u.username }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+    </div>
+    <div class="col-md-6 mb-3">
+      <label class="form-label">组</label>
+      <input type="text" name="group" id="group" class="form-control" value="{{ lead.group if lead else '' }}" readonly>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">姓名 <span class="text-danger">*</span></label>
+      <input type="text" name="name" class="form-control" value="{{ lead.name if lead else '' }}" required>
+    </div>
+    <div class="col-md-6 mb-3">
+      <label class="form-label">电话 <span class="text-danger">*</span></label>
+      <input type="text" name="phone" class="form-control" value="{{ lead.phone if lead else '' }}" required>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">客户分类 <span class="text-danger">*</span></label>
+      <select name="customer_category" class="form-select" required>
+        <option value="">请选择</option>
+        <option value="A类">A类</option>
+        <option value="B类">B类</option>
+        <option value="C类">C类</option>
+        <option value="D类">D类</option>
+      </select>
+    </div>
+    <div class="col-md-6 mb-3">
+      <label class="form-label">分线日期</label>
+      <input type="date" name="assignment_date" class="form-control" value="{{ lead.assignment_date.strftime('%Y-%m-%d') if lead and lead.assignment_date else '' }}">
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">所属区域</label>
+      <input type="text" name="region" class="form-control" value="{{ lead.region if lead else '' }}">
+    </div>
+    <div class="col-md-6 mb-3">
+      <label class="form-label">来源 <span class="text-danger">*</span></label>
+      <select name="source" class="form-select" required>
+        <option value="">请选择</option>
+        <option value="网站">网站</option>
+        <option value="展会">展会</option>
+        <option value="转介绍">转介绍</option>
+        <option value="广告">广告</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">状态 <span class="text-danger">*</span></label>
+      <select name="status" class="form-select" required>
+        <option value="新线索">新线索</option>
+        <option value="已联系">已联系</option>
+        <option value="已报价">已报价</option>
+        <option value="已成交">已成交</option>
+        <option value="已关闭">已关闭</option>
+      </select>
+    </div>
+    <div class="col-md-6 mb-3">
+      <label class="form-label">成交金额</label>
+      <input type="number" step="0.01" name="deal_amount" class="form-control" value="{{ lead.deal_amount if lead else '' }}">
+    </div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">客户基本信息 <span class="text-danger">*</span></label>
+    <textarea name="customer_info" class="form-control" rows="3" required>{{ lead.customer_info if lead else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="checkbox" name="wechat_added" id="wechat_added" {% if lead and lead.wechat_added %}checked{% endif %}>
+      <label class="form-check-label" for="wechat_added">是否加微信</label>
+    </div>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="checkbox" name="factory_visit" id="factory_visit" {% if lead and lead.factory_visit %}checked{% endif %}>
+      <label class="form-check-label" for="factory_visit">是否到厂</label>
+    </div>
+  </div>
+  <div class="mb-3" id="leave_reason_div" style="display: none;">
+    <label class="form-label">离厂原因 <span class="text-danger">*</span></label>
+    <textarea name="leave_reason" id="leave_reason" class="form-control" rows="2">{{ lead.leave_reason if lead else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">备注</label>
+    <textarea name="remark" class="form-control" rows="2">{{ lead.remark if lead else '' }}</textarea>
+  </div>
+  <button type="submit" class="btn btn-primary">保存</button>
+  <a href="/leads" class="btn btn-secondary">取消</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% if current_user.role == 'consultant' %}
+    document.getElementById('group').value = '{{ current_user.group_name or '' }}';
+    {% else %}
+    var salesSelect = document.getElementById('sales_consultant');
+    var groupInput = document.getElementById('group');
+    if(salesSelect) {
+        salesSelect.addEventListener('change', function() {
+            var selected = this.options[this.selectedIndex];
+            var group = selected.getAttribute('data-group') || '';
+            groupInput.value = group;
+        });
+        if(salesSelect.value) {
+            var initial = salesSelect.options[salesSelect.selectedIndex];
+            groupInput.value = initial.getAttribute('data-group') || '';
+        }
+    }
+    {% endif %}
+
+    var factoryCheck = document.getElementById('factory_visit');
+    var leaveDiv = document.getElementById('leave_reason_div');
+    var leaveInput = document.getElementById('leave_reason');
+    function toggleLeaveReason() {
+        if (factoryCheck.checked) {
+            leaveDiv.style.display = 'block';
+            leaveInput.setAttribute('required', 'required');
+        } else {
+            leaveDiv.style.display = 'none';
+            leaveInput.removeAttribute('required');
+            leaveInput.value = '';
+        }
+    }
+    if (factoryCheck) {
+        factoryCheck.addEventListener('change', toggleLeaveReason);
+        toggleLeaveReason();
+    }
+});
+</script>
+{% endblock %}
