@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>批量分配客户</h2>
+<form method="post">
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="select_all"></th>
+          <th>姓名</th>
+          <th>电话</th>
+          <th>当前组</th>
+          <th>当前销售顾问</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr>
+          <td><input type="checkbox" name="lead_ids" value="{{ lead.id }}" class="lead-check"></td>
+          <td>{{ lead.name }}</td>
+          <td>{{ lead.phone }}</td>
+          <td>{{ lead.group or '-' }}</td>
+          <td>{{ lead.sales_consultant or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="row mt-3">
+    <div class="col-md-4">
+      <label class="form-label">目标销售顾问</label>
+      <select name="sales_consultant" class="form-select" required>
+        <option value="">请选择</option>
+        {% for u in consultants %}
+        <option value="{{ u.username }}">{{ u.username }} ({{ u.group_name }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">目标组</label>
+      <select name="group" class="form-select" required>
+        {% for g in groups %}
+        <option value="{{ g.name }}">{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+      <button type="submit" class="btn btn-warning">确认分配</button>
+      <a href="/leads" class="btn btn-secondary ms-2">返回</a>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('select_all').addEventListener('change', function() {
+    document.querySelectorAll('.lead-check').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

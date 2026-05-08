@@ -75,6 +75,23 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# ---------- 修改密码 ----------
+@app.route('/change_password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        old_pw = request.form['old_password']
+        new_pw = request.form['new_password']
+        if current_user.password != old_pw:
+            flash('原密码错误')
+        else:
+            current_user.password = new_pw
+            db.session.commit()
+            flash('密码已修改，请重新登录')
+            logout_user()
+            return redirect(url_for('login'))
+    return render_template('change_password.html')
+
 # ---------- 首页 ----------
 @app.route('/')
 @login_required
@@ -102,7 +119,7 @@ def index():
                            order_status_labels=order_status_labels,
                            order_status_counts=order_status_counts)
 
-# ---------- 客户列表 + 查询 + 到期筛选 + 导出 ----------
+# ---------- 客户列表 + 查询 + 导出 ----------
 @app.route('/leads')
 @login_required
 def lead_list():
@@ -133,7 +150,6 @@ def lead_list():
 
     leads = query.order_by(Lead.created_at.desc()).all()
 
-    # 导出不受筛选影响，直接使用所有 leads
     if request.args.get('export') == '1':
         return export_leads_csv(leads)
 
@@ -145,7 +161,6 @@ def lead_list():
         else:
             base = get_base_date(lead)
             days_remain = (base + timedelta(days=7) - datetime.utcnow().date()).days
-        # 最新跟进记录
         latest_fu = FollowUp.query.filter_by(lead_id=lead.id).order_by(FollowUp.created_at.desc()).first()
         lead_data.append({
             'lead': lead,
@@ -154,7 +169,6 @@ def lead_list():
             'latest_followup': latest_fu
         })
 
-    # 到期筛选
     if expire_filter == 'expired':
         lead_data = [item for item in lead_data if item['expired']]
     elif expire_filter == 'not_expired':
@@ -255,14 +269,20 @@ def import_leads():
     flash(f'成功导入 {count} 条客户数据')
     return redirect(url_for('lead_list'))
 
-# ---------- 新建 / 编辑客户 ----------
+# ---------- 新建客户 ----------
 @app.route('/lead/new', methods=['GET', 'POST'])
 @login_required
 def lead_create():
     if request.method == 'POST':
+        if current_user.role in ['consultant', 'leader']:
+            group = current_user.group_name
+            consultant = current_user.username
+        else:
+            group = request.form['group']
+            consultant = request.form['sales_consultant']
         lead = Lead(
-            group=request.form['group'],
-            sales_consultant=request.form['sales_consultant'],
+            group=group,
+            sales_consultant=consultant,
             assignment_date=datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None,
             customer_category=request.form['customer_category'],
             name=request.form['name'],
@@ -281,32 +301,46 @@ def lead_create():
         db.session.commit()
         return redirect(url_for('lead_list'))
     consultants = User.query.filter_by(role='consultant').all()
-    return render_template('lead_form.html', lead=None, consultants=consultants, current_user=current_user)
+    groups = Group.query.all()
+    return render_template('lead_form.html', lead=None, consultants=consultants, groups=groups)
 
+# ---------- 编辑客户 ----------
 @app.route('/lead/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def lead_edit(id):
     lead = Lead.query.get_or_404(id)
+    # 权限控制
+    if current_user.role == 'consultant' and lead.sales_consultant != current_user.username:
+        flash('无权限编辑此客户')
+        return redirect(url_for('lead_list'))
+    if current_user.role == 'leader' and lead.sales_consultant != current_user.username:
+        flash('组长只能编辑自己的客户')
+        return redirect(url_for('lead_list'))
     if request.method == 'POST':
-        lead.group = request.form['group']
-        lead.sales_consultant = request.form['sales_consultant']
-        lead.assignment_date = datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None
-        lead.customer_category = request.form['customer_category']
-        lead.name = request.form['name']
-        lead.phone = request.form['phone']
-        lead.wechat_added = 'wechat_added' in request.form
-        lead.region = request.form['region']
-        lead.customer_info = request.form['customer_info']
-        lead.factory_visit = 'factory_visit' in request.form
-        lead.leave_reason = request.form.get('leave_reason', '')
-        lead.status = request.form['status']
-        lead.source = request.form['source']
-        lead.deal_amount = float(request.form['deal_amount']) if request.form['deal_amount'] else 0.0
-        lead.remark = request.form['remark']
+        if current_user.role == 'admin':
+            lead.group = request.form['group']
+            lead.sales_consultant = request.form['sales_consultant']
+        else:
+            lead.group = request.form['group'] if current_user.role == 'admin' else current_user.group_name
+            lead.sales_consultant = request.form['sales_consultant'] if current_user.role == 'admin' else current_user.username
+            lead.assignment_date = datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None
+            lead.customer_category = request.form['customer_category']
+            lead.name = request.form['name']
+            lead.phone = request.form['phone']
+            lead.wechat_added = 'wechat_added' in request.form
+            lead.region = request.form['region']
+            lead.customer_info = request.form['customer_info']
+            lead.factory_visit = 'factory_visit' in request.form
+            lead.leave_reason = request.form.get('leave_reason', '')
+            lead.status = request.form['status']
+            lead.source = request.form['source']
+            lead.deal_amount = float(request.form['deal_amount']) if request.form['deal_amount'] else 0.0
+            lead.remark = request.form['remark']
         db.session.commit()
         return redirect(url_for('lead_list'))
     consultants = User.query.filter_by(role='consultant').all()
-    return render_template('lead_form.html', lead=lead, consultants=consultants, current_user=current_user)
+    groups = Group.query.all()
+    return render_template('lead_form.html', lead=lead, consultants=consultants, groups=groups)
 
 # ---------- 删除 ----------
 @app.route('/lead/<int:id>/delete', methods=['POST'])
@@ -320,7 +354,7 @@ def lead_delete(id):
     db.session.commit()
     return redirect(url_for('lead_list'))
 
-# ---------- 跟进记录 ----------
+# ---------- 跟进 ----------
 @app.route('/lead/<int:lead_id>/followups')
 @login_required
 def follow_up_list(lead_id):
@@ -410,15 +444,15 @@ def quick_update(id):
         if lead.sales_consultant != current_user.username:
             return {'error': '无权限'}, 403
         if field not in ['status']:
-            return {'error': '无权限修改此字段'}, 403
+            return {'error': '只能修改状态'}, 403
     elif current_user.role == 'leader':
-        if lead.group != current_user.group_name:
-            return {'error': '无权限'}, 403
+        if lead.sales_consultant != current_user.username:
+            return {'error': '只能修改自己的客户'}, 403
         if field not in ['status', 'sales_consultant']:
             return {'error': '无权限修改此字段'}, 403
-    else:
-        if field not in ['status', 'sales_consultant', 'group']:
-            return {'error': '不允许的字段'}, 400
+    elif current_user.role == 'admin':
+        if field not in ['group', 'sales_consultant']:
+            return {'error': '管理员只能分配组和销售顾问'}, 400
 
     if field == 'status':
         lead.status = value
@@ -432,6 +466,33 @@ def quick_update(id):
 
     db.session.commit()
     return {'success': True}
+
+# ---------- 批量分配 ----------
+@app.route('/admin/batch_assign', methods=['GET', 'POST'])
+@login_required
+def batch_assign():
+    if current_user.role != 'admin':
+        flash('无权限')
+        return redirect(url_for('lead_list'))
+    if request.method == 'POST':
+        lead_ids = request.form.getlist('lead_ids')
+        new_consultant = request.form.get('sales_consultant')
+        new_group = request.form.get('group')
+        if not lead_ids:
+            flash('请至少选择一个客户')
+            return redirect(url_for('batch_assign'))
+        for lid in lead_ids:
+            lead = Lead.query.get(int(lid))
+            if lead:
+                lead.sales_consultant = new_consultant
+                lead.group = new_group
+        db.session.commit()
+        flash(f'已成功分配 {len(lead_ids)} 条客户')
+        return redirect(url_for('lead_list'))
+    leads = Lead.query.order_by(Lead.created_at.desc()).all()
+    consultants = User.query.filter_by(role='consultant').all()
+    groups = Group.query.all()
+    return render_template('batch_assign.html', leads=leads, consultants=consultants, groups=groups)
 
 # ---------- 用户管理 ----------
 @app.route('/admin/users')

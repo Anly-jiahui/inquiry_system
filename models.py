@@ -22,7 +22,7 @@ class Lead(db.Model):
     assignment_date = db.Column(db.Date)
     customer_category = db.Column(db.String(50))
     name = db.Column(db.String(50), nullable=False)
-    phone = db.Column(db.String(20), nullable=False)        # 电话必填
+    phone = db.Column(db.String(20), nullable=False)
     wechat_added = db.Column(db.Boolean, default=False)
     region = db.Column(db.String(50))
     customer_info = db.Column(db.Text)
