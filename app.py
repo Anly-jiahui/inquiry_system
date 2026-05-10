@@ -150,7 +150,11 @@ def lead_list():
 
     leads = query.order_by(Lead.created_at.desc()).all()
 
+    # 导出权限
     if request.args.get('export') == '1':
+        if current_user.role != 'admin':
+            flash('无权限导出')
+            return redirect(url_for('lead_list'))
         return export_leads_csv(leads)
 
     lead_data = []
@@ -217,10 +221,13 @@ def export_leads_csv(leads):
     return Response(output, mimetype='text/csv',
                     headers={"Content-Disposition": "attachment;filename=客户数据.csv"})
 
-# ---------- 导入 CSV ----------
+# ---------- 导入 CSV（仅管理员） ----------
 @app.route('/import_leads', methods=['POST'])
 @login_required
 def import_leads():
+    if current_user.role != 'admin':
+        flash('无权限导入')
+        return redirect(url_for('lead_list'))
     if 'file' not in request.files:
         flash('请选择文件')
         return redirect(url_for('lead_list'))
@@ -234,17 +241,11 @@ def import_leads():
     next(csv_reader, None)
     count = 0
     for row in csv_reader:
-        if len(row) < 14:
+        if len(row) < 15:   # 至少需要15列（0-14包含主要字段）
             continue
-        if current_user.role == 'consultant':
-            consultant = current_user.username
-            group_name = current_user.group_name
-        elif current_user.role == 'leader':
-            consultant = row[1] if row[1] else ''
-            group_name = current_user.group_name
-        else:
-            consultant = row[1] if row[1] else ''
-            group_name = row[0] if row[0] else ''
+        # 管理员导入时，完全使用文件中的组和销售顾问
+        group_name = row[0] if row[0] else ''
+        consultant = row[1] if row[1] else ''
 
         lead = Lead(
             group=group_name,
@@ -258,10 +259,11 @@ def import_leads():
             customer_info=row[8] if row[8] else '',
             factory_visit=True if row[9] == '是' else False,
             leave_reason=row[10] if row[10] else '',
-            status=row[11] if row[11] else '新线索',
-            source=row[12] if row[12] else '',
-            deal_amount=float(row[13]) if row[13] else 0.0,
-            remark=row[14] if len(row) > 14 and row[14] else ''
+            # row[11] 是“是否到期”列，忽略不导入
+            status=row[12] if len(row) > 12 and row[12] else '新线索',
+            source=row[13] if len(row) > 13 and row[13] else '',
+            deal_amount=float(row[14]) if len(row) > 14 and row[14] else 0.0,
+            remark=row[15] if len(row) > 15 and row[15] else ''
         )
         db.session.add(lead)
         count += 1
@@ -309,7 +311,6 @@ def lead_create():
 @login_required
 def lead_edit(id):
     lead = Lead.query.get_or_404(id)
-    # 权限控制
     if current_user.role == 'consultant' and lead.sales_consultant != current_user.username:
         flash('无权限编辑此客户')
         return redirect(url_for('lead_list'))
@@ -321,8 +322,8 @@ def lead_edit(id):
             lead.group = request.form['group']
             lead.sales_consultant = request.form['sales_consultant']
         else:
-            lead.group = request.form['group'] if current_user.role == 'admin' else current_user.group_name
-            lead.sales_consultant = request.form['sales_consultant'] if current_user.role == 'admin' else current_user.username
+            lead.group = current_user.group_name if current_user.role != 'admin' else request.form['group']
+            lead.sales_consultant = current_user.username if current_user.role != 'admin' else request.form['sales_consultant']
             lead.assignment_date = datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None
             lead.customer_category = request.form['customer_category']
             lead.name = request.form['name']

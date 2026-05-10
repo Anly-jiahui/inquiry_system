@@ -5,7 +5,9 @@
     {% if current_user.role == 'admin' %}
     <a href="/admin/batch_assign" class="btn btn-warning btn-sm float-end ms-2"><i class="bi bi-people"></i> 批量分配</a>
     {% endif %}
+    {% if current_user.role == 'admin' %}
     <a href="/leads?export=1{% if request.args.get('name') %}&name={{ request.args.get('name') }}{% endif %}{% if request.args.get('sales_consultant') %}&sales_consultant={{ request.args.get('sales_consultant') }}{% endif %}{% if request.args.get('group') %}&group={{ request.args.get('group') }}{% endif %}{% if request.args.get('status') %}&status={{ request.args.get('status') }}{% endif %}{% if request.args.get('customer_category') %}&customer_category={{ request.args.get('customer_category') }}{% endif %}" class="btn btn-success btn-sm float-end ms-2"><i class="bi bi-download"></i> 导出CSV</a>
+    {% endif %}
 </h2>
 
 <form class="row g-3 mb-4" method="get">
@@ -61,8 +63,9 @@
 </div>
 {% endif %}
 
+{% if current_user.role == 'admin' %}
 <div class="mb-3">
-    <form action="/import_leads" method="post" enctype="multipart/form-data" onsubmit="return confirm('导入将自动归属到你的名下，继续吗？');">
+    <form action="/import_leads" method="post" enctype="multipart/form-data" onsubmit="return confirm('导入将使用文件中指定的销售顾问和组，继续吗？');">
         <small class="text-muted">导入CSV（格式：组,销售顾问,分线日期,客户分类,姓名,电话,是否加微信,所属区域,基本信息,是否到厂,离厂原因,状态,来源,成交金额,备注）</small>
         <div class="input-group">
             <input type="file" name="file" class="form-control" accept=".csv" required>
@@ -70,6 +73,7 @@
         </div>
     </form>
 </div>
+{% endif %}
 
 <div class="table-responsive">
     <table class="table table-striped table-hover">

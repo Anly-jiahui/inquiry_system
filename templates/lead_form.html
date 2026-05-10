@@ -136,7 +136,6 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 组自动填充（仅 non-admin 且销售顾问可选时）
     {% if current_user.role != 'admin' and current_user.role != 'consultant' and current_user.role != 'leader' %}
     var salesSelect = document.getElementById('sales_consultant');
     var groupInput = document.getElementById('group');
@@ -149,7 +148,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     {% endif %}
 
-    // 是否到厂联动
     var factoryCheck = document.getElementById('factory_visit');
     var leaveDiv = document.getElementById('leave_reason_div');
     var leaveInput = document.getElementById('leave_reason');
