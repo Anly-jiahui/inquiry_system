@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, Res
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Lead, FollowUp, Order, Group
 from datetime import datetime, timedelta
+from urllib.parse import quote  # 新增，用于导出中文文件名
 import csv
 import io
 import os
@@ -218,8 +219,10 @@ def export_leads_csv(leads):
         ])
     output = si.getvalue()
     si.close()
+    # 支持中文文件名
+    safe_filename = quote('客户数据.csv')
     return Response(output, mimetype='text/csv',
-                    headers={"Content-Disposition": "attachment;filename=客户数据.csv"})
+                    headers={"Content-Disposition": f"attachment;filename*=UTF-8''{safe_filename}"})
 
 # ---------- 导入 CSV（仅管理员） ----------
 @app.route('/import_leads', methods=['POST'])
