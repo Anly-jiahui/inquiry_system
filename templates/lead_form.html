@@ -55,32 +55,22 @@
       <label class="form-label">客户分类 <span class="text-danger">*</span></label>
       <select name="customer_category" class="form-select" required {% if current_user.role == 'admin' %}disabled{% endif %}>
         <option value="">请选择</option>
-        <option value="A类">A类</option>
-        <option value="B类">B类</option>
-        <option value="C类">C类</option>
-        <option value="D类">D类</option>
+        <option value="A类" {% if lead and lead.customer_category == 'A类' %}selected{% endif %}>A类</option>
+        <option value="B类" {% if lead and lead.customer_category == 'B类' %}selected{% endif %}>B类</option>
+        <option value="C类" {% if lead and lead.customer_category == 'C类' %}selected{% endif %}>C类</option>
+        <option value="D类" {% if lead and lead.customer_category == 'D类' %}selected{% endif %}>D类</option>
       </select>
       {% if current_user.role == 'admin' %}<input type="hidden" name="customer_category" value="{{ lead.customer_category if lead else '' }}">{% endif %}
-    </div>
-    <div class="col-md-6 mb-3">
-      <label class="form-label">分线日期</label>
-      <input type="date" name="assignment_date" class="form-control" value="{{ lead.assignment_date.strftime('%Y-%m-%d') if lead and lead.assignment_date else '' }}" {% if current_user.role == 'admin' %}readonly{% endif %}>
-    </div>
-  </div>
-  <div class="row">
-    <div class="col-md-6 mb-3">
-      <label class="form-label">所属区域</label>
-      <input type="text" name="region" class="form-control" value="{{ lead.region if lead else '' }}" {% if current_user.role == 'admin' %}readonly{% endif %}>
     </div>
     <div class="col-md-6 mb-3">
       <label class="form-label">来源 <span class="text-danger">*</span></label>
       <select name="source" class="form-select" required {% if current_user.role == 'admin' %}disabled{% endif %}>
         <option value="">请选择</option>
-        <option value="网站">网站</option>
-        <option value="展会">展会</option>
-        <option value="转介绍">转介绍</option>
-        <option value="广告">广告</option>
-        <option value="其他">其他</option>
+        <option value="网站" {% if lead and lead.source == '网站' %}selected{% endif %}>网站</option>
+        <option value="展会" {% if lead and lead.source == '展会' %}selected{% endif %}>展会</option>
+        <option value="转介绍" {% if lead and lead.source == '转介绍' %}selected{% endif %}>转介绍</option>
+        <option value="广告" {% if lead and lead.source == '广告' %}selected{% endif %}>广告</option>
+        <option value="其他" {% if lead and lead.source == '其他' %}selected{% endif %}>其他</option>
       </select>
       {% if current_user.role == 'admin' %}<input type="hidden" name="source" value="{{ lead.source if lead else '' }}">{% endif %}
     </div>
@@ -89,11 +79,11 @@
     <div class="col-md-6 mb-3">
       <label class="form-label">状态 <span class="text-danger">*</span></label>
       <select name="status" class="form-select" required {% if current_user.role == 'admin' %}disabled{% endif %}>
-        <option value="新线索">新线索</option>
-        <option value="已联系">已联系</option>
-        <option value="已报价">已报价</option>
-        <option value="已成交">已成交</option>
-        <option value="已关闭">已关闭</option>
+        <option value="新线索" {% if lead and lead.status == '新线索' %}selected{% endif %}>新线索</option>
+        <option value="已联系" {% if lead and lead.status == '已联系' %}selected{% endif %}>已联系</option>
+        <option value="已报价" {% if lead and lead.status == '已报价' %}selected{% endif %}>已报价</option>
+        <option value="已成交" {% if lead and lead.status == '已成交' %}selected{% endif %}>已成交</option>
+        <option value="已关闭" {% if lead and lead.status == '已关闭' %}selected{% endif %}>已关闭</option>
       </select>
       {% if current_user.role == 'admin' %}<input type="hidden" name="status" value="{{ lead.status if lead else '新线索' }}">{% endif %}
     </div>
@@ -136,15 +126,21 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    {% if current_user.role != 'admin' and current_user.role != 'consultant' and current_user.role != 'leader' %}
+    {% if current_user.role == 'consultant' or current_user.role == 'leader' %}
+    document.getElementById('group').value = '{{ current_user.group_name or '' }}';
+    {% else %}
     var salesSelect = document.getElementById('sales_consultant');
     var groupInput = document.getElementById('group');
-    if(salesSelect && groupInput) {
+    if(salesSelect) {
         salesSelect.addEventListener('change', function() {
             var selected = this.options[this.selectedIndex];
             var group = selected.getAttribute('data-group') || '';
             groupInput.value = group;
         });
+        if(salesSelect.value) {
+            var initial = salesSelect.options[salesSelect.selectedIndex];
+            groupInput.value = initial.getAttribute('data-group') || '';
+        }
     }
     {% endif %}
 

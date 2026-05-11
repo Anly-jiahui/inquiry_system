@@ -46,8 +46,6 @@ def get_base_date(lead):
     last_fu = FollowUp.query.filter_by(lead_id=lead.id).order_by(FollowUp.created_at.desc()).first()
     if last_fu:
         return last_fu.created_at.date()
-    if lead.assignment_date:
-        return lead.assignment_date
     return lead.created_at.date() if lead.created_at else datetime.utcnow().date()
 
 def is_lead_expired(lead):
@@ -130,7 +128,8 @@ def lead_list():
     if current_user.role == 'admin':
         query = Lead.query
     elif current_user.role == 'leader':
-        query = Lead.query.filter_by(group=current_user.group_name)
+        # 组长可以看到本组所有客户 以及 自己作为销售顾问的客户
+        query = Lead.query.filter(db.or_(Lead.group == current_user.group_name, Lead.sales_consultant == current_user.username))
     else:
         query = Lead.query.filter_by(sales_consultant=current_user.username)
 
@@ -154,7 +153,6 @@ def lead_list():
 
     leads = query.order_by(Lead.created_at.desc()).all()
 
-    # 导出权限
     if request.args.get('export') == '1':
         if current_user.role != 'admin':
             flash('无权限导出')
@@ -184,7 +182,8 @@ def lead_list():
 
     expired_count = sum(1 for item in lead_data if item['expired'])
 
-    all_consultants = User.query.filter_by(role='consultant').all()
+    # 组长也可以出现在销售顾问列表中
+    all_consultants = User.query.filter(User.role.in_(['consultant', 'leader'])).all()
     all_groups = Group.query.all()
     return render_template('leads.html',
                            lead_data=lead_data,
@@ -198,7 +197,7 @@ def export_leads_excel(leads):
     ws.title = "客户数据"
 
     headers = [
-        '组', '销售顾问', '分线日期', '客户分类', '姓名', '电话', '是否加微信', '所属区域',
+        '组', '销售顾问', '客户分类', '姓名', '电话', '是否加微信', '所属区域',
         '客户基本信息', '是否到厂', '离厂原因', '是否到期', '状态', '来源', '成交金额', '备注'
     ]
     for col_idx, header in enumerate(headers, 1):
@@ -211,7 +210,6 @@ def export_leads_excel(leads):
         data = [
             lead.group or '',
             lead.sales_consultant or '',
-            lead.assignment_date.strftime('%Y-%m-%d') if lead.assignment_date else '',
             lead.customer_category or '',
             lead.name,
             lead.phone,
@@ -228,7 +226,7 @@ def export_leads_excel(leads):
         ]
         for col_idx, value in enumerate(data, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            if col_idx == 6:  # 电话列设为文本格式
+            if col_idx == 5:  # 电话列设为文本
                 cell.number_format = '@'
 
     output = BytesIO()
@@ -269,54 +267,73 @@ def import_leads():
         flash('无法解析 Excel 文件')
         return redirect(url_for('lead_list'))
 
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    field_map = {
+        '组': 'group',
+        '销售顾问': 'consultant',
+        '客户分类': 'category',
+        '姓名': 'name',
+        '电话': 'phone',
+        '是否加微信': 'wechat',
+        '所属区域': 'region',
+        '客户基本信息': 'info',
+        '是否到厂': 'factory',
+        '离厂原因': 'leave_reason',
+        '是否到期': 'expire',
+        '状态': 'status',
+        '来源': 'source',
+        '成交金额': 'amount',
+        '备注': 'remark'
+    }
+
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if not header_row:
+        flash('Excel 第一行必须是表头')
+        return redirect(url_for('lead_list'))
+
+    col_index = {}
+    for idx, header in enumerate(header_row):
+        if header is None: continue
+        header_clean = str(header).strip().lower()
+        for cn, key in field_map.items():
+            if cn in header_clean or cn == header_clean:
+                col_index[key] = idx
+                break
+
+    if 'name' not in col_index or 'phone' not in col_index or 'group' not in col_index:
+        flash('Excel 必须包含“组”、“姓名”和“电话”列')
+        return redirect(url_for('lead_list'))
+
     count = 0
     errors = []
-
-    for row_idx, row in enumerate(rows, start=2):
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or all(cell is None for cell in row):
             continue
 
-        # 严格按导出模板列序读取
-        group_name       = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ''
-        consultant       = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ''
-        assignment_str   = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ''   # ✅ 分线日期在第3列
-        customer_category= str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
-        name             = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ''
-        phone            = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ''
-        wechat_str       = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ''
-        region           = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ''
-        customer_info    = str(row[8]).strip() if len(row) > 8 and row[8] is not None else ''
-        factory_str      = str(row[9]).strip() if len(row) > 9 and row[9] is not None else ''
-        leave_reason     = str(row[10]).strip() if len(row) > 10 and row[10] is not None else ''
-        # 跳过第11列“是否到期”
-        status           = str(row[12]).strip() if len(row) > 12 and row[12] is not None else ''
-        source           = str(row[13]).strip() if len(row) > 13 and row[13] is not None else ''
-        deal_amount_str  = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ''
-        remark           = str(row[15]).strip() if len(row) > 15 and row[15] is not None else ''
+        def get_field(key):
+            idx = col_index.get(key)
+            if idx is None or idx >= len(row):
+                return ''
+            val = row[idx]
+            return str(val).strip() if val is not None else ''
 
-        # 必填检查
-        if not all([group_name, consultant, name, phone]):
-            errors.append(f'第{row_idx}行：组、销售顾问、姓名、电话不能为空，已跳过')
+        group_name = get_field('group')
+        consultant = get_field('consultant')
+        name = get_field('name')
+        phone = get_field('phone')
+
+        if not group_name or not name or not phone:
+            missing = []
+            if not group_name: missing.append('组')
+            if not name: missing.append('姓名')
+            if not phone: missing.append('电话')
+            errors.append(f'第{row_idx}行：必填项 {", ".join(missing)} 为空，已跳过')
             continue
 
-        # 解析日期
-        assignment_date = None
-        if assignment_str:
-            try:
-                assignment_date = datetime.strptime(assignment_str, '%Y-%m-%d')
-            except ValueError:
-                try:
-                    assignment_date = datetime.strptime(assignment_str, '%Y/%m/%d')
-                except ValueError:
-                    errors.append(f'第{row_idx}行：分线日期格式错误，已跳过')
-                    continue
-
-        # 解析金额
         deal_amount = 0.0
-        if deal_amount_str:
+        amount_str = get_field('amount')
+        if amount_str:
             try:
-                deal_amount = float(deal_amount_str)
+                deal_amount = float(amount_str)
             except ValueError:
                 errors.append(f'第{row_idx}行：成交金额格式错误，已跳过')
                 continue
@@ -324,19 +341,18 @@ def import_leads():
         lead = Lead(
             group=group_name,
             sales_consultant=consultant,
-            assignment_date=assignment_date,
-            customer_category=customer_category if customer_category else 'A类',
+            customer_category=get_field('category') or 'A类',
             name=name,
             phone=phone,
-            wechat_added=(wechat_str == '是'),
-            region=region,
-            customer_info=customer_info,
-            factory_visit=(factory_str == '是'),
-            leave_reason=leave_reason,
-            status=status if status else '新线索',
-            source=source if source else '网站',
+            wechat_added=get_field('wechat') == '是',
+            region=get_field('region'),
+            customer_info=get_field('info'),
+            factory_visit=get_field('factory') == '是',
+            leave_reason=get_field('leave_reason'),
+            status=get_field('status') or '新线索',
+            source=get_field('source') or '网站',
             deal_amount=deal_amount,
-            remark=remark
+            remark=get_field('remark')
         )
         db.session.add(lead)
         count += 1
@@ -362,7 +378,6 @@ def lead_create():
         lead = Lead(
             group=group,
             sales_consultant=consultant,
-            assignment_date=datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None,
             customer_category=request.form['customer_category'],
             name=request.form['name'],
             phone=request.form['phone'],
@@ -379,7 +394,7 @@ def lead_create():
         db.session.add(lead)
         db.session.commit()
         return redirect(url_for('lead_list'))
-    consultants = User.query.filter_by(role='consultant').all()
+    consultants = User.query.filter(User.role.in_(['consultant', 'leader'])).all()
     groups = Group.query.all()
     return render_template('lead_form.html', lead=None, consultants=consultants, groups=groups)
 
@@ -391,8 +406,8 @@ def lead_edit(id):
     if current_user.role == 'consultant' and lead.sales_consultant != current_user.username:
         flash('无权限编辑此客户')
         return redirect(url_for('lead_list'))
-    if current_user.role == 'leader' and lead.sales_consultant != current_user.username:
-        flash('组长只能编辑自己的客户')
+    if current_user.role == 'leader' and (lead.sales_consultant != current_user.username and lead.group != current_user.group_name):
+        flash('组长只能编辑本组内自己名下的客户')
         return redirect(url_for('lead_list'))
     if request.method == 'POST':
         if current_user.role == 'admin':
@@ -401,7 +416,6 @@ def lead_edit(id):
         else:
             lead.group = current_user.group_name if current_user.role != 'admin' else request.form['group']
             lead.sales_consultant = current_user.username if current_user.role != 'admin' else request.form['sales_consultant']
-            lead.assignment_date = datetime.strptime(request.form['assignment_date'], '%Y-%m-%d') if request.form['assignment_date'] else None
             lead.customer_category = request.form['customer_category']
             lead.name = request.form['name']
             lead.phone = request.form['phone']
@@ -416,7 +430,7 @@ def lead_edit(id):
             lead.remark = request.form['remark']
         db.session.commit()
         return redirect(url_for('lead_list'))
-    consultants = User.query.filter_by(role='consultant').all()
+    consultants = User.query.filter(User.role.in_(['consultant', 'leader'])).all()
     groups = Group.query.all()
     return render_template('lead_form.html', lead=lead, consultants=consultants, groups=groups)
 
@@ -424,10 +438,10 @@ def lead_edit(id):
 @app.route('/lead/<int:id>/delete', methods=['POST'])
 @login_required
 def lead_delete(id):
+    lead = Lead.query.get_or_404(id)
     if current_user.role != 'admin':
         flash('无权删除')
         return redirect(url_for('lead_list'))
-    lead = Lead.query.get_or_404(id)
     db.session.delete(lead)
     db.session.commit()
     return redirect(url_for('lead_list'))
@@ -458,7 +472,7 @@ def order_list():
     if current_user.role == 'admin':
         orders = Order.query.order_by(Order.order_date.desc()).all()
     elif current_user.role == 'leader':
-        orders = Order.query.join(Lead).filter(Lead.group == current_user.group_name).order_by(Order.order_date.desc()).all()
+        orders = Order.query.join(Lead).filter(db.or_(Lead.group == current_user.group_name, Lead.sales_consultant == current_user.username)).order_by(Order.order_date.desc()).all()
     else:
         orders = Order.query.join(Lead).filter(Lead.sales_consultant == current_user.username).order_by(Order.order_date.desc()).all()
     return render_template('orders.html', orders=orders)
@@ -477,9 +491,12 @@ def order_create():
         db.session.add(order)
         db.session.commit()
         return redirect(url_for('order_list'))
-    leads = Lead.query.all() if current_user.role == 'admin' else (
-        Lead.query.filter_by(group=current_user.group_name).all() if current_user.role == 'leader' else Lead.query.filter_by(sales_consultant=current_user.username).all()
-    )
+    if current_user.role == 'admin':
+        leads = Lead.query.all()
+    elif current_user.role == 'leader':
+        leads = Lead.query.filter(db.or_(Lead.group == current_user.group_name, Lead.sales_consultant == current_user.username)).all()
+    else:
+        leads = Lead.query.filter_by(sales_consultant=current_user.username).all()
     return render_template('order_form.html', order=None, leads=leads)
 
 @app.route('/order/<int:id>/edit', methods=['GET', 'POST'])
@@ -494,9 +511,12 @@ def order_edit(id):
         order.order_date = datetime.strptime(request.form['order_date'], '%Y-%m-%d')
         db.session.commit()
         return redirect(url_for('order_list'))
-    leads = Lead.query.all() if current_user.role == 'admin' else (
-        Lead.query.filter_by(group=current_user.group_name).all() if current_user.role == 'leader' else Lead.query.filter_by(sales_consultant=current_user.username).all()
-    )
+    if current_user.role == 'admin':
+        leads = Lead.query.all()
+    elif current_user.role == 'leader':
+        leads = Lead.query.filter(db.or_(Lead.group == current_user.group_name, Lead.sales_consultant == current_user.username)).all()
+    else:
+        leads = Lead.query.filter_by(sales_consultant=current_user.username).all()
     return render_template('order_form.html', order=order, leads=leads)
 
 @app.route('/order/<int:id>/delete', methods=['POST'])
@@ -524,8 +544,8 @@ def quick_update(id):
         if field not in ['status']:
             return {'error': '只能修改状态'}, 403
     elif current_user.role == 'leader':
-        if lead.sales_consultant != current_user.username:
-            return {'error': '只能修改自己的客户'}, 403
+        if lead.sales_consultant != current_user.username and lead.group != current_user.group_name:
+            return {'error': '只能修改自己组内自己名下的客户'}, 403
         if field not in ['status', 'sales_consultant']:
             return {'error': '无权限修改此字段'}, 403
     elif current_user.role == 'admin':
@@ -536,7 +556,7 @@ def quick_update(id):
         lead.status = value
     elif field == 'sales_consultant':
         lead.sales_consultant = value
-        consultant = User.query.filter_by(username=value, role='consultant').first()
+        consultant = User.query.filter_by(username=value).first()
         if consultant and consultant.group_name:
             lead.group = consultant.group_name
     elif field == 'group':
@@ -568,7 +588,7 @@ def batch_assign():
         flash(f'已成功分配 {len(lead_ids)} 条客户')
         return redirect(url_for('lead_list'))
     leads = Lead.query.order_by(Lead.created_at.desc()).all()
-    consultants = User.query.filter_by(role='consultant').all()
+    consultants = User.query.filter(User.role.in_(['consultant', 'leader'])).all()
     groups = Group.query.all()
     return render_template('batch_assign.html', leads=leads, consultants=consultants, groups=groups)
 

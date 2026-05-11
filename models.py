@@ -19,7 +19,6 @@ class Lead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     group = db.Column(db.String(50))
     sales_consultant = db.Column(db.String(50))
-    assignment_date = db.Column(db.Date)
     customer_category = db.Column(db.String(50))
     name = db.Column(db.String(50), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
