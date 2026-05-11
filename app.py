@@ -2,10 +2,13 @@ from flask import Flask, render_template, request, redirect, url_for, flash, Res
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Lead, FollowUp, Order, Group
 from datetime import datetime, timedelta
-from urllib.parse import quote  # 新增，用于导出中文文件名
+from urllib.parse import quote
 import csv
 import io
 import os
+import openpyxl
+from openpyxl.styles import Font, PatternFill
+from io import BytesIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-me')
@@ -156,7 +159,7 @@ def lead_list():
         if current_user.role != 'admin':
             flash('无权限导出')
             return redirect(url_for('lead_list'))
-        return export_leads_csv(leads)
+        return export_leads_excel(leads)
 
     lead_data = []
     for lead in leads:
@@ -189,17 +192,23 @@ def lead_list():
                            all_groups=all_groups,
                            expired_count=expired_count)
 
-def export_leads_csv(leads):
-    si = io.StringIO()
-    writer = csv.writer(si)
+def export_leads_excel(leads):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "客户数据"
+
     headers = [
         '组', '销售顾问', '分线日期', '客户分类', '姓名', '电话', '是否加微信', '所属区域',
         '客户基本信息', '是否到厂', '离厂原因', '是否到期', '状态', '来源', '成交金额', '备注'
     ]
-    writer.writerow(headers)
-    for lead in leads:
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+
+    for row_idx, lead in enumerate(leads, 2):
         expired = is_lead_expired(lead)
-        writer.writerow([
+        data = [
             lead.group or '',
             lead.sales_consultant or '',
             lead.assignment_date.strftime('%Y-%m-%d') if lead.assignment_date else '',
@@ -216,15 +225,24 @@ def export_leads_csv(leads):
             lead.source or '',
             lead.deal_amount if lead.deal_amount else 0,
             lead.remark or ''
-        ])
-    output = si.getvalue()
-    si.close()
-    # 支持中文文件名
-    safe_filename = quote('客户数据.csv')
-    return Response(output, mimetype='text/csv',
-                    headers={"Content-Disposition": f"attachment;filename*=UTF-8''{safe_filename}"})
+        ]
+        for col_idx, value in enumerate(data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            if col_idx == 6:  # 电话列设为文本
+                cell.number_format = '@'
 
-# ---------- 导入 CSV（仅管理员） ----------
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    safe_filename = quote('客户数据.xlsx')
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f"attachment;filename*=UTF-8''{safe_filename}"}
+    )
+
+# ---------- 导入 Excel（仅管理员） ----------
 @app.route('/import_leads', methods=['POST'])
 @login_required
 def import_leads():
@@ -239,39 +257,90 @@ def import_leads():
         flash('未选择文件')
         return redirect(url_for('lead_list'))
 
-    stream = io.StringIO(file.stream.read().decode("utf-8"))
-    csv_reader = csv.reader(stream)
-    next(csv_reader, None)
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ('.xlsx', '.xls'):
+        flash('请上传 Excel 文件（.xlsx 或 .xls）')
+        return redirect(url_for('lead_list'))
+
+    try:
+        wb = openpyxl.load_workbook(file)
+        ws = wb.active
+    except:
+        flash('无法解析 Excel 文件')
+        return redirect(url_for('lead_list'))
+
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
     count = 0
-    for row in csv_reader:
-        if len(row) < 15:   # 至少需要15列（0-14包含主要字段）
+    errors = []
+
+    for row_idx, row in enumerate(rows, start=2):
+        if not row or all(cell is None for cell in row):
             continue
-        # 管理员导入时，完全使用文件中的组和销售顾问
-        group_name = row[0] if row[0] else ''
-        consultant = row[1] if row[1] else ''
+
+        group_name = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ''
+        consultant = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ''
+        name       = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ''
+        phone      = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
+        customer_category = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ''
+        assignment_str    = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ''
+        wechat_str        = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ''
+        region            = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ''
+        customer_info     = str(row[8]).strip() if len(row) > 8 and row[8] is not None else ''
+        factory_str       = str(row[9]).strip() if len(row) > 9 and row[9] is not None else ''
+        leave_reason      = str(row[10]).strip() if len(row) > 10 and row[10] is not None else ''
+        status            = str(row[12]).strip() if len(row) > 12 and row[12] is not None else ''
+        source            = str(row[13]).strip() if len(row) > 13 and row[13] is not None else ''
+        deal_amount_str   = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ''
+        remark            = str(row[15]).strip() if len(row) > 15 and row[15] is not None else ''
+
+        if not all([group_name, consultant, name, phone]):
+            errors.append(f'第{row_idx}行：组、销售顾问、姓名、电话不能为空，已跳过')
+            continue
+
+        assignment_date = None
+        if assignment_str:
+            try:
+                assignment_date = datetime.strptime(assignment_str, '%Y-%m-%d')
+            except:
+                try:
+                    assignment_date = datetime.strptime(assignment_str, '%Y/%m/%d')
+                except:
+                    errors.append(f'第{row_idx}行：分线日期格式错误，已跳过')
+                    continue
+
+        deal_amount = 0.0
+        if deal_amount_str:
+            try:
+                deal_amount = float(deal_amount_str)
+            except:
+                errors.append(f'第{row_idx}行：成交金额格式错误，已跳过')
+                continue
 
         lead = Lead(
             group=group_name,
             sales_consultant=consultant,
-            assignment_date=datetime.strptime(row[2], '%Y-%m-%d') if row[2] else None,
-            customer_category=row[3] if row[3] else '',
-            name=row[4],
-            phone=row[5] if row[5] else '',
-            wechat_added=True if row[6] == '是' else False,
-            region=row[7] if row[7] else '',
-            customer_info=row[8] if row[8] else '',
-            factory_visit=True if row[9] == '是' else False,
-            leave_reason=row[10] if row[10] else '',
-            # row[11] 是“是否到期”列，忽略不导入
-            status=row[12] if len(row) > 12 and row[12] else '新线索',
-            source=row[13] if len(row) > 13 and row[13] else '',
-            deal_amount=float(row[14]) if len(row) > 14 and row[14] else 0.0,
-            remark=row[15] if len(row) > 15 and row[15] else ''
+            assignment_date=assignment_date,
+            customer_category=customer_category if customer_category else 'A类',
+            name=name,
+            phone=phone,
+            wechat_added=(wechat_str == '是'),
+            region=region,
+            customer_info=customer_info,
+            factory_visit=(factory_str == '是'),
+            leave_reason=leave_reason,
+            status=status if status else '新线索',
+            source=source if source else '网站',
+            deal_amount=deal_amount,
+            remark=remark
         )
         db.session.add(lead)
         count += 1
+
     db.session.commit()
-    flash(f'成功导入 {count} 条客户数据')
+    if errors:
+        flash(f'成功导入 {count} 条客户数据；以下行有误已跳过：<br>' + '<br>'.join(errors))
+    else:
+        flash(f'成功导入 {count} 条客户数据')
     return redirect(url_for('lead_list'))
 
 # ---------- 新建客户 ----------
