@@ -228,7 +228,7 @@ def export_leads_excel(leads):
         ]
         for col_idx, value in enumerate(data, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            if col_idx == 6:  # 电话列设为文本
+            if col_idx == 6:  # 电话列设为文本格式
                 cell.number_format = '@'
 
     output = BytesIO()
@@ -277,42 +277,47 @@ def import_leads():
         if not row or all(cell is None for cell in row):
             continue
 
-        group_name = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ''
-        consultant = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ''
-        name       = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ''
-        phone      = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
-        customer_category = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ''
-        assignment_str    = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ''
-        wechat_str        = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ''
-        region            = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ''
-        customer_info     = str(row[8]).strip() if len(row) > 8 and row[8] is not None else ''
-        factory_str       = str(row[9]).strip() if len(row) > 9 and row[9] is not None else ''
-        leave_reason      = str(row[10]).strip() if len(row) > 10 and row[10] is not None else ''
-        status            = str(row[12]).strip() if len(row) > 12 and row[12] is not None else ''
-        source            = str(row[13]).strip() if len(row) > 13 and row[13] is not None else ''
-        deal_amount_str   = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ''
-        remark            = str(row[15]).strip() if len(row) > 15 and row[15] is not None else ''
+        # 严格按导出模板列序读取
+        group_name       = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ''
+        consultant       = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ''
+        assignment_str   = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ''   # ✅ 分线日期在第3列
+        customer_category= str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
+        name             = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ''
+        phone            = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ''
+        wechat_str       = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ''
+        region           = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ''
+        customer_info    = str(row[8]).strip() if len(row) > 8 and row[8] is not None else ''
+        factory_str      = str(row[9]).strip() if len(row) > 9 and row[9] is not None else ''
+        leave_reason     = str(row[10]).strip() if len(row) > 10 and row[10] is not None else ''
+        # 跳过第11列“是否到期”
+        status           = str(row[12]).strip() if len(row) > 12 and row[12] is not None else ''
+        source           = str(row[13]).strip() if len(row) > 13 and row[13] is not None else ''
+        deal_amount_str  = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ''
+        remark           = str(row[15]).strip() if len(row) > 15 and row[15] is not None else ''
 
+        # 必填检查
         if not all([group_name, consultant, name, phone]):
             errors.append(f'第{row_idx}行：组、销售顾问、姓名、电话不能为空，已跳过')
             continue
 
+        # 解析日期
         assignment_date = None
         if assignment_str:
             try:
                 assignment_date = datetime.strptime(assignment_str, '%Y-%m-%d')
-            except:
+            except ValueError:
                 try:
                     assignment_date = datetime.strptime(assignment_str, '%Y/%m/%d')
-                except:
+                except ValueError:
                     errors.append(f'第{row_idx}行：分线日期格式错误，已跳过')
                     continue
 
+        # 解析金额
         deal_amount = 0.0
         if deal_amount_str:
             try:
                 deal_amount = float(deal_amount_str)
-            except:
+            except ValueError:
                 errors.append(f'第{row_idx}行：成交金额格式错误，已跳过')
                 continue
 
@@ -419,10 +424,10 @@ def lead_edit(id):
 @app.route('/lead/<int:id>/delete', methods=['POST'])
 @login_required
 def lead_delete(id):
-    lead = Lead.query.get_or_404(id)
     if current_user.role != 'admin':
         flash('无权删除')
         return redirect(url_for('lead_list'))
+    lead = Lead.query.get_or_404(id)
     db.session.delete(lead)
     db.session.commit()
     return redirect(url_for('lead_list'))

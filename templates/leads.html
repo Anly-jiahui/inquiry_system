@@ -75,9 +75,127 @@
 </div>
 {% endif %}
 
-<!-- 客户表格部分与之前最终版相同，此处省略以节省篇幅，请使用之前提供的最新 leads.html 内容 -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                {% if current_user.role != 'consultant' %}
+                <th>组</th>
+                <th>销售顾问</th>
+                {% endif %}
+                <th>客户姓名</th>
+                <th>客户电话</th>
+                <th>客户分类</th>
+                <th>状态</th>
+                <th>客户基本信息</th>
+                <th>最新跟进记录</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in lead_data %}
+            <tr class="{{ 'table-danger' if item.expired else '' }}" data-lead-id="{{ item.lead.id }}">
+                {% if current_user.role != 'consultant' %}
+                <td>
+                    {% if current_user.role == 'admin' %}
+                    <select class="form-select form-select-sm quick-edit" data-field="group">
+                        {% for g in all_groups %}
+                        <option value="{{ g.name }}" {% if item.lead.group==g.name %}selected{% endif %}>{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    {{ item.lead.group or '-' }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if current_user.role in ['admin','leader'] %}
+                    <select class="form-select form-select-sm quick-edit" data-field="sales_consultant" {% if current_user.role == 'leader' and item.lead.sales_consultant != current_user.username %}disabled{% endif %}>
+                        <option value="">-</option>
+                        {% for u in all_consultants %}
+                        <option value="{{ u.username }}" {% if item.lead.sales_consultant==u.username %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    {{ item.lead.sales_consultant or '-' }}
+                    {% endif %}
+                </td>
+                {% endif %}
+                <td>{{ item.lead.name }}</td>
+                <td><a href="tel:{{ item.lead.phone }}">{{ item.lead.phone }}</a></td>
+                <td>{{ item.lead.customer_category or '-' }}</td>
+                <td>
+                    {% if (current_user.role == 'consultant' and item.lead.sales_consultant == current_user.username) or (current_user.role == 'leader' and item.lead.sales_consultant == current_user.username) %}
+                    <select class="form-select form-select-sm quick-edit" data-field="status">
+                        <option value="新线索" {% if item.lead.status=='新线索' %}selected{% endif %}>新线索</option>
+                        <option value="已联系" {% if item.lead.status=='已联系' %}selected{% endif %}>已联系</option>
+                        <option value="已报价" {% if item.lead.status=='已报价' %}selected{% endif %}>已报价</option>
+                        <option value="已成交" {% if item.lead.status=='已成交' %}selected{% endif %}>已成交</option>
+                        <option value="已关闭" {% if item.lead.status=='已关闭' %}selected{% endif %}>已关闭</option>
+                    </select>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ item.lead.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <small>{{ item.lead.customer_info[:30] if item.lead.customer_info else '-' }}{% if item.lead.customer_info and item.lead.customer_info|length > 30 %}...{% endif %}</small>
+                </td>
+                <td>
+                    {% if item.latest_followup %}
+                    <small>{{ item.latest_followup.created_at.strftime('%m-%d') }} {{ item.latest_followup.content[:20] }}{% if item.latest_followup.content|length > 20 %}...{% endif %}</small>
+                    {% else %}
+                    <small class="text-muted">暂无</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/lead/{{ item.lead.id }}/followups" class="btn btn-outline-info btn-sm">跟进</a>
+                    {% if (current_user.role == 'consultant' and item.lead.sales_consultant == current_user.username) or (current_user.role == 'leader' and item.lead.sales_consultant == current_user.username) or (current_user.role == 'admin') %}
+                    <a href="/lead/{{ item.lead.id }}/edit" class="btn btn-outline-warning btn-sm">编辑</a>
+                    {% endif %}
+                    {% if current_user.role == 'admin' %}
+                    <form action="/lead/{{ item.lead.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('确定删除？');">
+                        <button class="btn btn-outline-danger btn-sm">删除</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}
 
 {% block scripts %}
-...
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selects = document.querySelectorAll('.quick-edit:not([disabled])');
+    selects.forEach(function(select) {
+        select.addEventListener('change', function() {
+            const leadId = this.closest('tr').dataset.leadId;
+            const field = this.dataset.field;
+            const value = this.value;
+            fetch('/lead/' + leadId + '/quick_update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: field, value: value })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.classList.add('is-valid');
+                    setTimeout(() => this.classList.remove('is-valid'), 1000);
+                    if (field === 'sales_consultant') location.reload();
+                } else {
+                    alert('修改失败：' + (data.error || '未知错误'));
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('请求失败');
+                location.reload();
+            });
+        });
+    });
+});
+</script>
 {% endblock %}
